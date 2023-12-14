@@ -11,8 +11,8 @@ logging.basicConfig(level=logging.INFO,
 # Read sender email and password from 'secret.txt'
 with open('secret.txt', 'r') as f:
     lines = f.readlines()
-    sender_email = lines[0].strip()
-    password = lines[1].strip()
+    sender_email = lines[0].strip()  # почта, с которой делаем рассылку
+    password = lines[1].strip()  # пароль к почте (пароли приложений Яндекс)
 
 # Email server configuration
 smtp_server = 'smtp.yandex.ru'
@@ -34,8 +34,8 @@ for index, row in df.iterrows():
     var3 = row['Var3']  # столбец с текстом пункта положения в эксельке
 
     # Replace variables in email content
-    email_body = email_content.replace('Var1', str(var1)).replace(
-        'Var2', str(var2)).replace('Var3', str(var3))
+    email_body = email_content.replace('courseName', str(var1)).replace(
+        'numberField', str(var2)).replace('additionalText', str(var3))
 
     # Set up the MIME
     message = MIMEMultipart()
