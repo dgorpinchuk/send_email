@@ -21,17 +21,19 @@ port = 465
 # Read email list from Excel file 'list.xlsx'
 df = pd.read_excel('list.xlsx')
 
+# тема письма
+subject = 'Уведомление об аннулировании результатов'
+
 # Read email content from HTML file 'mail.html'
 with open('mail.html', 'r') as email_file:
     email_content = email_file.read()
 
 # Iterate through each row in the DataFrame
 for index, row in df.iterrows():
-    receiver_email = row['Email']
-    subject = row['Topic']
-    var1 = row['Var1']  # столбец с назавнием направления в эксельке
-    var2 = row['Var2']  # столбец с пунктом положения в эксельке
-    var3 = row['Var3']  # столбец с текстом пункта положения в эксельке
+    receiver_email = row['E-mail']
+    var1 = row['Направление']  # столбец с назавнием направления в эксельке
+    var2 = row['Пункт аннулирования']  # столбец с пунктом положения в эксельке
+    var3 = row['Доп текст']  # столбец с текстом пункта положения в эксельке
 
     # Replace variables in email content
     email_body = email_content.replace('courseName', str(var1)).replace(
