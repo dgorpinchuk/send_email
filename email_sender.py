@@ -31,13 +31,13 @@ with open('mail.html', 'r') as email_file:
 # Iterate through each row in the DataFrame
 for index, row in df.iterrows():
     receiver_email = row['E-mail']
-    var1 = row['Направление']  # столбец с назавнием направления в эксельке
-    var2 = row['Пункт аннулирования']  # столбец с пунктом положения в эксельке
-    var3 = row['Доп текст']  # столбец с текстом пункта положения в эксельке
+    courseNameVar = row['Направление']  # столбец с назавнием направления в эксельке
+    numberFieldVar = row['Пункт аннулирования']  # столбец с пунктом положения в эксельке
+    additionalTextVar = row['Доп текст']  # столбец с текстом пункта положения в эксельке
 
     # Replace variables in email content
-    email_body = email_content.replace('courseName', str(var1)).replace(
-        'numberField', str(var2)).replace('additionalText', str(var3))
+    email_body = email_content.replace('courseName', str(courseNameVar)).replace(
+        'numberField', str(numberFieldVar)).replace('additionalText', str(additionalTextVar))
 
     # Set up the MIME
     message = MIMEMultipart()
