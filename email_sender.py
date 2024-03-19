@@ -3,16 +3,13 @@ import logging
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.header import Header
+from email.utils import formataddr
+from settings import *
 import ssl
 
 logging.basicConfig(level=logging.INFO,
                     format='[%(asctime)s] %(message)s', datefmt='%H:%M:%S')
-
-# Read sender email and password from 'secret.txt'
-with open('secret.txt', 'r') as f:
-    lines = f.readlines()
-    sender_email = lines[0].strip()  # почта, с которой делаем рассылку
-    password = lines[1].strip()  # пароль к почте (пароли приложений Яндекс)
 
 # Email server configuration
 smtp_server = 'smtp.yandex.ru'
@@ -41,7 +38,8 @@ for index, row in df.iterrows():
 
     # Set up the MIME
     message = MIMEMultipart()
-    message['From'] = sender_email
+    # message['From'] = sender_email
+    message['From'] = formataddr((str(Header(sender_email_name, 'utf-8')), sender_email))
     message['To'] = receiver_email
     message['Subject'] = subject
 
