@@ -11,15 +11,8 @@ import ssl
 logging.basicConfig(level=logging.INFO,
                     format='[%(asctime)s] %(message)s', datefmt='%H:%M:%S')
 
-# Email server configuration
-smtp_server = 'smtp.yandex.ru'
-port = 465
-
 # Read email list from Excel file 'list.xlsx'
 df = pd.read_excel('list.xlsx')
-
-# тема письма
-subject = 'Уведомление об аннулировании результатов'
 
 # Read email content from HTML file 'mail.html'
 with open('mail.html', 'r') as email_file:
