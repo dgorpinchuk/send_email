@@ -5,11 +5,15 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.header import Header
 from email.utils import formataddr
-from settings import *
 import ssl
+import configparser
 
 logging.basicConfig(level=logging.INFO,
                     format='[%(asctime)s] %(message)s', datefmt='%H:%M:%S')
+
+# Read config variables from 'config.ini'
+config = configparser.ConfigParser()
+config.read('config.ini')
 
 # Read email list from Excel file 'list.xlsx'
 df = pd.read_excel('list.xlsx')
@@ -17,6 +21,21 @@ df = pd.read_excel('list.xlsx')
 # Read email content from HTML file 'mail.html'
 with open('mail.html', 'r') as email_file:
     email_content = email_file.read()
+
+# Get variables from config file
+sender_email_name = config['Email']['sender_email_name']
+sender_email = config['Email']['sender_email']
+subject = config['Email']['subject']
+smtp_server = config['Email']['smtp_server']
+port = int(config['Email']['port'])
+password = config['Email']['password']
+
+logging.warning("Отправитель: " + sender_email_name)
+logging.warning("От: " + sender_email)
+logging.warning("Тема письма: " + subject)
+logging.warning("SMTP сервер: " + smtp_server)
+logging.warning("Порт сервера: " + str(port))
+logging.warning("Пароль: " + password)
 
 # Iterate through each row in the DataFrame
 for index, row in df.iterrows():
@@ -47,4 +66,4 @@ for index, row in df.iterrows():
         server.login(sender_email, password)
         server.sendmail(sender_email, receiver_email, message.as_string())
 
-    logging.info("Email sent to " + receiver_email)
+    logging.info("Письмо отправлено " + receiver_email)

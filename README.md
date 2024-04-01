@@ -1,7 +1,11 @@
-## Создайте конфигурационный файл `settings.py` следующего содержания:
+## Создайте конфигурационный файл `config.ini` следующего содержания:
 
-```
-sender_email = 'user@domain.com' # почта, с которой делаем рассылку
-sender_email_name = 'John Doe' # название аккаунта, с которого делаем рассылку
-password = '123456' # пароль к почте (пароли приложений Яндекс)
+```ini
+[Email]
+smtp_server = smtp.yandex.ru
+port = 465
+sender_email = user@domain.com
+password = 123456
+sender_email_name = Имя отправителя
+subject = Тема письма
 ```
