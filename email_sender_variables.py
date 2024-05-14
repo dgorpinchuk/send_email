@@ -23,12 +23,12 @@ with open('mail.html', 'r') as email_file:
     email_content = email_file.read()
 
 # Get variables from config file
-sender_email_name = config['Email']['sender_email_name']
-sender_email = config['Email']['sender_email']
-subject = config['Email']['subject']
-smtp_server = config['Email']['smtp_server']
-port = int(config['Email']['port'])
-password = config['Email']['password']
+sender_email_name = config['Common']['sender_email_name']
+sender_email = config['Common']['sender_email']
+subject = config['Annulment']['subject']
+smtp_server = config['Common']['smtp_server']
+port = int(config['Common']['port'])
+password = config['Common']['password']
 
 logging.warning("Отправитель: " + sender_email_name)
 logging.warning("От: " + sender_email)
