@@ -1,4 +1,5 @@
 .DS_Store
+/.venv/
 settings.py
 list.xlsx
 mail.html
