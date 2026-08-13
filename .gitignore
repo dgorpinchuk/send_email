@@ -1,3 +1,6 @@
 *.ini
 *.html
 *.xlsx
+*.log
+list.txt
+config.txt
