@@ -41,7 +41,6 @@ def load(path: str, deduplicate: bool = True) -> tuple[list[dict[str, str]], lis
             rows = [{k.strip(): _clean(v) for k, v in row.items() if k is not None} for row in reader]
     elif suffix == ".xlsx":
         from openpyxl import load_workbook
-
         workbook = load_workbook(file_path, read_only=True, data_only=True)
         sheet = workbook.active
         values = list(sheet.iter_rows(values_only=True))
@@ -61,6 +60,21 @@ def load(path: str, deduplicate: bool = True) -> tuple[list[dict[str, str]], lis
     for row in rows:
         row["email"] = row.get(email_column, "").strip()
     return (_dedupe(rows) if deduplicate else rows), columns + ([] if "email" in columns else ["email"])
+
+
+def count_duplicates(rows: list[dict[str, str]]) -> int:
+    """Return the number of rows removed by email-based de-duplication."""
+    seen: set[str] = set()
+    duplicates = 0
+    for row in rows:
+        email = row.get("email", "").strip().lower()
+        if not email:
+            continue
+        if email in seen:
+            duplicates += 1
+        else:
+            seen.add(email)
+    return duplicates
 
 
 def validate(rows: list[dict[str, str]]) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
