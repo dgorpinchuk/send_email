@@ -60,6 +60,7 @@ def start(profile: str, subject: str, sender: str, template: str, recipient_file
         "total": total,
         "successful": 0,
         "failed": 0,
+        "fatal_error": "",
         "log_file": str(log_path),
     }
     items = _read()
@@ -74,16 +75,26 @@ def start(profile: str, subject: str, sender: str, template: str, recipient_file
 
 
 def append_log(entry: dict, message: str) -> None:
-    Path(entry["log_file"]).open("a", encoding="utf-8").write(message + "\n")
+    with Path(entry["log_file"]).open("a", encoding="utf-8") as handle:
+        handle.write(message + "\n")
 
 
-def finish(entry: dict, successful: int, failed: int, stopped: bool) -> None:
+def finish(entry: dict, successful: int, failed: int, stopped: bool, fatal_error: str = "") -> None:
     now = datetime.now().astimezone()
+    if fatal_error:
+        status = "failed"
+    elif stopped:
+        status = "stopped"
+    elif failed == 0:
+        status = "finished"
+    else:
+        status = "finished_with_errors"
     entry.update({
         "finished_at": now.isoformat(timespec="seconds"),
-        "status": "stopped" if stopped else ("finished" if failed == 0 else "finished_with_errors"),
+        "status": status,
         "successful": successful,
         "failed": failed,
+        "fatal_error": fatal_error,
     })
     items = _read()
     for item in items:
@@ -91,7 +102,9 @@ def finish(entry: dict, successful: int, failed: int, stopped: bool) -> None:
             item.update(entry)
             break
     _write(items)
-    append_log(entry, f"\nCampaign {entry['status']}: {entry['finished_at']}\nSuccessful: {successful}\nErrors: {failed}")
+    append_log(entry, f"\nCampaign {status}: {entry['finished_at']}\nSuccessful: {successful}\nErrors: {failed}")
+    if fatal_error:
+        append_log(entry, f"Fatal error: {fatal_error}")
 
 
 def list_history() -> list[dict]:
