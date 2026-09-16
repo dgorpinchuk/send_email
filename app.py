@@ -2,20 +2,17 @@
 
 from __future__ import annotations
 
-import html
-import re
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
-    QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QMainWindow,
-    QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QSpinBox, QVBoxLayout,
-    QWidget, QCheckBox,
+    QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
+    QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
+    QMainWindow, QMessageBox, QProgressBar, QPushButton, QSpinBox, QTextBrowser,
+    QVBoxLayout, QWidget,
 )
 
 from core import profiles
@@ -26,7 +23,7 @@ from core.template_engine import render, validate_columns, variables_in
 
 class SendWorker(QObject):
     progress = Signal(int, int, str, bool, str)
-    finished = Signal(int, int)
+    finished = Signal(int, int, bool)
 
     def __init__(self, smtp: dict, rows: list[dict[str, str]], subject: str,
                  sender_name: str, template: str, delay_ms: int = 0):
@@ -40,8 +37,10 @@ class SendWorker(QObject):
     def run(self):
         import time
         ok_count = fail_count = 0
+        stopped = False
         for index, row in enumerate(self.rows, 1):
             if self.stop_requested:
+                stopped = True
                 break
             recipient = row.get("email", "")
             try:
@@ -60,7 +59,7 @@ class SendWorker(QObject):
             self.progress.emit(index, len(self.rows), recipient, ok, error or "")
             if self.delay_ms:
                 time.sleep(self.delay_ms / 1000)
-        self.finished.emit(ok_count, fail_count)
+        self.finished.emit(ok_count, fail_count, stopped)
 
 
 class ProfileDialog(QDialog):
@@ -83,7 +82,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("SMTP Mail Sender")
-        self.resize(980, 760)
+        self.resize(1000, 780)
         self.rows: list[dict[str, str]] = []
         self.columns: list[str] = []
         self.template_text = ""
@@ -115,8 +114,9 @@ class MainWindow(QMainWindow):
         self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.Password)
         self.server = QLineEdit()
         self.port = QSpinBox(); self.port.setRange(1, 65535); self.port.setValue(465)
-        for row, label, widget in [(1,"Username",self.username),(2,"Password",self.password),(3,"Server",self.server),(4,"Port",self.port)]:
-            smtp_grid.addWidget(QLabel(label), row, 0); smtp_grid.addWidget(widget, row, 1, 1, 6)
+        for row, label, widget in [(1, "Username", self.username), (2, "Password", self.password), (3, "Server", self.server), (4, "Port", self.port)]:
+            smtp_grid.addWidget(QLabel(label), row, 0)
+            smtp_grid.addWidget(widget, row, 1, 1, 6)
         root.addWidget(smtp_box)
 
         mail_box = QGroupBox("Message")
@@ -125,11 +125,11 @@ class MainWindow(QMainWindow):
         self.subject = QLineEdit()
         self.html_path = QLineEdit(); self.html_path.setReadOnly(True)
         choose_html = QPushButton("Choose…")
-        edit_html = QPushButton("Edit")
+        edit_html = QPushButton("Edit in default editor")
         choose_html.clicked.connect(self.choose_html)
         edit_html.clicked.connect(self.edit_html)
-        form.addWidget(QLabel("Sender name"), 0, 0); form.addWidget(self.sender_name, 0, 1, 1, 3)
-        form.addWidget(QLabel("Subject"), 1, 0); form.addWidget(self.subject, 1, 1, 1, 3)
+        form.addWidget(QLabel("Sender name"), 0, 0); form.addWidget(self.sender_name, 0, 1, 1, 4)
+        form.addWidget(QLabel("Subject"), 1, 0); form.addWidget(self.subject, 1, 1, 1, 4)
         form.addWidget(QLabel("HTML template"), 2, 0); form.addWidget(self.html_path, 2, 1, 1, 2)
         form.addWidget(choose_html, 2, 3); form.addWidget(edit_html, 2, 4)
         root.addWidget(mail_box)
@@ -139,15 +139,22 @@ class MainWindow(QMainWindow):
         self.data_path = QLineEdit(); self.data_path.setReadOnly(True)
         choose_data = QPushButton("Choose…"); choose_data.clicked.connect(self.choose_data)
         self.dedupe = QCheckBox("Remove duplicates"); self.dedupe.setChecked(True)
-        data.addWidget(QLabel("Database"), 0, 0); data.addWidget(self.data_path, 0, 1, 1, 3); data.addWidget(choose_data, 0, 4)
+        self.dedupe.stateChanged.connect(lambda: self._read_data() if self.data_path.text() else None)
+        data.addWidget(QLabel("Database"), 0, 0); data.addWidget(self.data_path, 0, 1, 1, 2); data.addWidget(choose_data, 0, 3); data.addWidget(self.dedupe, 0, 4)
         self.stats = QLabel("No recipient file selected")
         data.addWidget(self.stats, 1, 0, 1, 5)
         root.addWidget(data_box)
 
+        settings = QHBoxLayout()
+        settings.addWidget(QLabel("Delay between emails (ms):"))
+        self.delay = QSpinBox(); self.delay.setRange(0, 60000); self.delay.setValue(0); self.delay.setSingleStep(100)
+        settings.addWidget(self.delay); settings.addStretch()
+        root.addLayout(settings)
+
         actions = QHBoxLayout()
         self.preview_btn = QPushButton("Preview"); self.preview_btn.clicked.connect(self.preview)
+        self.test_address = QLineEdit(); self.test_address.setPlaceholderText("Test recipient")
         self.test_btn = QPushButton("Send test email"); self.test_btn.clicked.connect(self.send_test)
-        self.test_address = QLineEdit(); self.test_address.setPlaceholderText("test@example.com")
         self.send_btn = QPushButton("START CAMPAIGN"); self.send_btn.clicked.connect(self.start_campaign)
         self.stop_btn = QPushButton("Stop"); self.stop_btn.setEnabled(False); self.stop_btn.clicked.connect(self.stop_campaign)
         actions.addWidget(self.preview_btn); actions.addWidget(self.test_address); actions.addWidget(self.test_btn); actions.addStretch(); actions.addWidget(self.stop_btn); actions.addWidget(self.send_btn)
@@ -163,12 +170,19 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(central)
         menu = self.menuBar().addMenu("Help")
-        about = QAction("About", self); about.triggered.connect(lambda: QMessageBox.information(self, "SMTP Mail Sender", "PySide6 email campaign tool"))
+        about = QAction("About", self)
+        about.triggered.connect(lambda: QMessageBox.information(self, "SMTP Mail Sender", "PySide6 email campaign tool"))
         menu.addAction(about)
 
     def _load_profiles(self):
-        self.profile_combo.blockSignals(True); self.profile_combo.clear(); self.profile_combo.addItems(profiles.names()); self.profile_combo.blockSignals(False)
-        if self.profile_combo.count(): self.load_profile(self.profile_combo.currentText())
+        current = self.profile_combo.currentText()
+        self.profile_combo.blockSignals(True)
+        self.profile_combo.clear(); self.profile_combo.addItems(profiles.names())
+        self.profile_combo.blockSignals(False)
+        if current in profiles.names():
+            self.profile_combo.setCurrentText(current)
+        elif self.profile_combo.count():
+            self.load_profile(self.profile_combo.currentText())
 
     def load_profile(self, name):
         if not name: return
@@ -178,7 +192,11 @@ class MainWindow(QMainWindow):
     def new_profile(self):
         dialog = ProfileDialog(self)
         if dialog.exec() == QDialog.Accepted and dialog.profile_name():
-            name = dialog.profile_name(); self.profile_combo.addItem(name); self.profile_combo.setCurrentText(name)
+            name = dialog.profile_name()
+            if name in profiles.names():
+                QMessageBox.warning(self, "Profile exists", "Choose a different profile name."); return
+            self.profile_combo.addItem(name); self.profile_combo.setCurrentText(name)
+            self.username.clear(); self.password.clear(); self.server.clear(); self.port.setValue(465)
 
     def save_profile(self):
         name = self.profile_combo.currentText().strip()
@@ -211,9 +229,12 @@ class MainWindow(QMainWindow):
             self.choose_html(); path = self.html_path.text()
         if not path: return
         try:
-            if sys.platform == "win32": subprocess.Popen(["start", "", path], shell=True)
-            elif sys.platform == "darwin": subprocess.Popen(["open", path])
-            else: subprocess.Popen(["xdg-open", path])
+            if sys.platform == "win32":
+                subprocess.Popen(["start", "", path], shell=True)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", path])
+            else:
+                subprocess.Popen(["xdg-open", path])
         except OSError as exc:
             QMessageBox.warning(self, "Cannot open editor", str(exc))
 
@@ -253,16 +274,19 @@ class MainWindow(QMainWindow):
         if missing: raise ValueError("Missing columns: " + ", ".join(missing))
         valid, invalid = validate(self.rows)
         if invalid: raise ValueError(f"There are {len(invalid)} invalid recipient rows")
+        if not valid: raise ValueError("No valid recipients found")
 
     def preview(self):
         try:
             self._ensure_ready()
             body = render(self.template_text, self.rows[0])
             dialog = QDialog(self); dialog.setWindowTitle("Email preview"); dialog.resize(900, 700)
-            layout = QVBoxLayout(dialog); info = QLabel(f"Subject: {self.subject.text()}\nTo: {self.rows[0]['email']}")
-            browser = QPlainTextEdit(); browser.setPlainText(body); browser.setReadOnly(True)
-            layout.addWidget(info); layout.addWidget(browser); dialog.exec()
-        except Exception as exc: QMessageBox.warning(self, "Cannot preview", str(exc))
+            layout = QVBoxLayout(dialog)
+            layout.addWidget(QLabel(f"Subject: {self.subject.text()}\nTo: {self.rows[0]['email']}"))
+            browser = QTextBrowser(); browser.setHtml(body); layout.addWidget(browser)
+            dialog.exec()
+        except Exception as exc:
+            QMessageBox.warning(self, "Cannot preview", str(exc))
 
     def send_test(self):
         try:
@@ -274,7 +298,8 @@ class MainWindow(QMainWindow):
             ok, error = send_email(self.server.text().strip(), self.port.value(), self.username.text().strip(), self.password.text(), self.username.text().strip(), address, self.subject.text().strip(), body, self.sender_name.text().strip() or self.username.text().strip())
             if ok: QMessageBox.information(self, "Test sent", f"Test email sent to {address}.")
             else: raise RuntimeError(error)
-        except Exception as exc: QMessageBox.critical(self, "Test failed", str(exc))
+        except Exception as exc:
+            QMessageBox.critical(self, "Test failed", str(exc))
 
     def start_campaign(self):
         try:
@@ -282,10 +307,17 @@ class MainWindow(QMainWindow):
             valid, _ = validate(self.rows)
             if QMessageBox.question(self, "Start campaign", f"Send {len(valid)} emails now?", QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes: return
             smtp = {"username": self.username.text().strip(), "password": self.password.text(), "server": self.server.text().strip(), "port": self.port.value()}
-            self.thread = QThread(); self.worker = SendWorker(smtp, valid, self.subject.text().strip(), self.sender_name.text().strip() or smtp["username"], self.template_text)
-            self.worker.moveToThread(self.thread); self.thread.started.connect(self.worker.run); self.worker.progress.connect(self.on_progress); self.worker.finished.connect(self.on_finished); self.thread.start()
-            self.send_btn.setEnabled(False); self.stop_btn.setEnabled(True); self.log.clear(); self.progress.setValue(0)
-        except Exception as exc: QMessageBox.warning(self, "Cannot start", str(exc))
+            self.thread = QThread()
+            self.worker = SendWorker(smtp, valid, self.subject.text().strip(), self.sender_name.text().strip() or smtp["username"], self.template_text, self.delay.value())
+            self.worker.moveToThread(self.thread)
+            self.thread.started.connect(self.worker.run)
+            self.worker.progress.connect(self.on_progress)
+            self.worker.finished.connect(self.on_finished)
+            self.thread.start()
+            self.send_btn.setEnabled(False); self.stop_btn.setEnabled(True); self.preview_btn.setEnabled(False); self.test_btn.setEnabled(False)
+            self.log.clear(); self.progress.setValue(0); self.current.setText("Starting…")
+        except Exception as exc:
+            QMessageBox.warning(self, "Cannot start", str(exc))
 
     def stop_campaign(self):
         if self.worker: self.worker.stop_requested = True
@@ -297,12 +329,13 @@ class MainWindow(QMainWindow):
         self.log.addItem(f"✓ {recipient}" if ok else f"✗ {recipient}: {error}")
         self.log.scrollToBottom()
 
-    @Slot(int, int)
-    def on_finished(self, ok, failed):
-        self.send_btn.setEnabled(True); self.stop_btn.setEnabled(False)
+    @Slot(int, int, bool)
+    def on_finished(self, ok, failed, stopped):
+        self.send_btn.setEnabled(True); self.stop_btn.setEnabled(False); self.preview_btn.setEnabled(True); self.test_btn.setEnabled(True)
         if self.thread:
             self.thread.quit(); self.thread.wait(); self.thread = self.worker = None
-        QMessageBox.information(self, "Campaign finished", f"Successful: {ok}\nErrors: {failed}")
+        status = "stopped" if stopped else "finished"
+        QMessageBox.information(self, "Campaign " + status, f"Successful: {ok}\nErrors: {failed}" + ("\nCampaign was stopped." if stopped else ""))
 
 
 if __name__ == "__main__":
