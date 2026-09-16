@@ -6,6 +6,25 @@ from email.message import EmailMessage
 from email.utils import formataddr
 
 
+def test_connection(
+    smtp_server: str,
+    port: int,
+    username: str,
+    password: str,
+    timeout: int = 10,
+) -> tuple[bool, str | None]:
+    """Open an SMTP SSL connection and authenticate without sending a message."""
+    try:
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL(
+            smtp_server, port, context=context, timeout=timeout
+        ) as server:
+            server.login(username, password)
+        return True, None
+    except (OSError, smtplib.SMTPException, ssl.SSLError) as exc:
+        return False, str(exc)
+
+
 def send_email(
     smtp_server: str,
     port: int,
