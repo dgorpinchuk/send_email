@@ -1,1 +1,0 @@
-Profile loading is handled by the main window profile selection callback.
