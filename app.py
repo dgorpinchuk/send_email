@@ -88,6 +88,7 @@ class MainWindow(QMainWindow):
         self.template_text = ""
         self.thread = None
         self.worker = None
+        self._profile_loading = False
         self._build_ui()
         self._load_profiles()
 
@@ -98,7 +99,10 @@ class MainWindow(QMainWindow):
         smtp_box = QGroupBox("SMTP profile")
         smtp_grid = QGridLayout(smtp_box)
         self.profile_combo = QComboBox()
-        self.profile_combo.currentTextChanged.connect(self.load_profile)
+        # Use both signals so selecting an item with the mouse/keyboard always
+        # causes the saved profile values to be loaded into the fields.
+        self.profile_combo.currentIndexChanged.connect(self._profile_index_changed)
+        self.profile_combo.activated.connect(self._profile_activated)
         new_profile = QPushButton("New")
         save_profile = QPushButton("Save")
         delete_profile = QPushButton("Delete")
@@ -174,43 +178,92 @@ class MainWindow(QMainWindow):
         about.triggered.connect(lambda: QMessageBox.information(self, "SMTP Mail Sender", "PySide6 email campaign tool"))
         menu.addAction(about)
 
-    def _load_profiles(self):
-        current = self.profile_combo.currentText()
+    def _load_profiles(self, select_name: str | None = None):
+        names = profiles.names()
+        current = select_name if select_name is not None else self.profile_combo.currentText()
+        self._profile_loading = True
         self.profile_combo.blockSignals(True)
-        self.profile_combo.clear(); self.profile_combo.addItems(profiles.names())
-        self.profile_combo.blockSignals(False)
-        if current in profiles.names():
+        self.profile_combo.clear()
+        self.profile_combo.addItems(names)
+        if current and current in names:
             self.profile_combo.setCurrentText(current)
-        elif self.profile_combo.count():
-            self.load_profile(self.profile_combo.currentText())
+        elif names:
+            self.profile_combo.setCurrentIndex(0)
+        else:
+            self._clear_profile_fields()
+        self.profile_combo.blockSignals(False)
+        self._profile_loading = False
 
-    def load_profile(self, name):
-        if not name: return
-        p = profiles.get(name)
-        self.username.setText(p.get("username", "")); self.password.setText(p.get("password", "")); self.server.setText(p.get("server", "")); self.port.setValue(int(p.get("port", 465)))
+        # Signals were blocked while rebuilding the combo, so explicitly load
+        # the selected profile afterwards. This also handles the initial launch.
+        selected = self.profile_combo.currentText().strip()
+        if selected:
+            self.load_profile(selected)
+
+    def _profile_index_changed(self, index: int):
+        if self._profile_loading or index < 0:
+            return
+        self.load_profile(self.profile_combo.itemText(index))
+
+    def _profile_activated(self, index: int):
+        if self._profile_loading or index < 0:
+            return
+        self.load_profile(self.profile_combo.itemText(index))
+
+    def load_profile(self, name: str):
+        name = name.strip()
+        if not name:
+            self._clear_profile_fields()
+            return
+        try:
+            profile = profiles.get(name)
+            self.username.setText(str(profile.get("username", "")))
+            self.password.setText(str(profile.get("password", "")))
+            self.server.setText(str(profile.get("server", "")))
+            try:
+                self.port.setValue(int(profile.get("port", 465)))
+            except (TypeError, ValueError):
+                self.port.setValue(465)
+        except Exception as exc:
+            self._clear_profile_fields()
+            QMessageBox.warning(self, "Profile error", f"Cannot load profile '{name}': {exc}")
+
+    def _clear_profile_fields(self):
+        self.username.clear()
+        self.password.clear()
+        self.server.clear()
+        self.port.setValue(465)
 
     def new_profile(self):
         dialog = ProfileDialog(self)
         if dialog.exec() == QDialog.Accepted and dialog.profile_name():
             name = dialog.profile_name()
             if name in profiles.names():
-                QMessageBox.warning(self, "Profile exists", "Choose a different profile name."); return
-            self.profile_combo.addItem(name); self.profile_combo.setCurrentText(name)
-            self.username.clear(); self.password.clear(); self.server.clear(); self.port.setValue(465)
+                QMessageBox.warning(self, "Profile exists", "Choose a different profile name.")
+                return
+            profiles.save(name, {"username": "", "password": "", "server": "", "port": 465})
+            self._load_profiles(name)
+            self.username.setFocus()
 
     def save_profile(self):
         name = self.profile_combo.currentText().strip()
         if not name:
-            self.new_profile(); name = self.profile_combo.currentText().strip()
-        if not name: return
-        profiles.save(name, {"username": self.username.text().strip(), "password": self.password.text(), "server": self.server.text().strip(), "port": self.port.value()})
-        self._load_profiles(); self.profile_combo.setCurrentText(name)
-        QMessageBox.information(self, "Saved", f"Profile '{name}' saved.")
+            self.new_profile()
+            name = self.profile_combo.currentText().strip()
+        if not name:
+            return
+        try:
+            profiles.save(name, {"username": self.username.text().strip(), "password": self.password.text(), "server": self.server.text().strip(), "port": self.port.value()})
+            self._load_profiles(name)
+            QMessageBox.information(self, "Saved", f"Profile '{name}' saved.")
+        except Exception as exc:
+            QMessageBox.critical(self, "Save error", str(exc))
 
     def delete_profile(self):
         name = self.profile_combo.currentText().strip()
         if name and QMessageBox.question(self, "Delete profile", f"Delete '{name}'?") == QMessageBox.Yes:
-            profiles.remove(name); self._load_profiles()
+            profiles.remove(name)
+            self._load_profiles()
 
     def choose_html(self):
         path, _ = QFileDialog.getOpenFileName(self, "Choose HTML template", "", "HTML files (*.html *.htm);;All files (*)")
